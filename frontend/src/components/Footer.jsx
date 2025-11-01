@@ -1,0 +1,16 @@
+import React from "react";
+
+const Footer = () => {
+  return (
+    <footer className="bg-blue-600 text-white py-6 mt-10">
+      <div className="container mx-auto px-6 text-center">
+        <p className="text-sm">
+          © {new Date().getFullYear()} MediBlock. All rights reserved.
+        </p>
+        
+      </div>
+    </footer>
+  );
+};
+
+export default Footer;
