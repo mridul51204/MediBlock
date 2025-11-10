@@ -1,20 +1,35 @@
 import axios from "axios";
 import FormData from "form-data";
 
-const PINATA_URL = "https://api.pinata.cloud/pinning/pinFileToIPFS";
+/**
+ * Pins a Buffer to IPFS using Pinata's pinFileToIPFS
+ * filename is used for UI clarity (we append .enc)
+ */
+export async function pinToIPFS(buffer, filename, pinataJWT) {
+  if (!pinataJWT) throw new Error("PINATA_JWT is not set");
 
-export async function pinToIPFS(fileBuffer, fileName, JWT) {
-  if (!JWT) throw new Error("PINATA_JWT not set");
-  const formData = new FormData();
-  formData.append("file", fileBuffer, { filename: fileName });
+  const form = new FormData();
+  form.append("file", buffer, { filename });
 
-  const res = await axios.post(PINATA_URL, formData, {
-    maxBodyLength: Infinity,
-    headers: {
-      Authorization: `Bearer ${JWT}`,
-      ...formData.getHeaders(),
-    },
-  });
+  // Optional metadata
+  form.append("pinataMetadata", JSON.stringify({ name: filename }));
+  form.append("pinataOptions", JSON.stringify({ cidVersion: 1 }));
 
-  return res.data;
+  const res = await axios.post(
+    "https://api.pinata.cloud/pinning/pinFileToIPFS",
+    form,
+    {
+      maxBodyLength: Infinity,
+      headers: {
+        ...form.getHeaders(),
+        Authorization: `Bearer ${pinataJWT}`
+      }
+    }
+  );
+
+  // Pinata responses may use schema: IpfsHash, PinSize, Timestamp
+  return {
+    cid: res.data?.IpfsHash,
+    raw: res.data
+  };
 }
