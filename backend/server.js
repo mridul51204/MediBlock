@@ -3,109 +3,141 @@ import cors from "cors";
 import multer from "multer";
 import morgan from "morgan";
 import mongoose from "mongoose";
-import { encryptFile } from "./utils/encrypt.js";
+import dotenv from "dotenv";
+
+import Record from "./models/Record.js";
+import { encryptBuffer } from "./utils/encrypt.js";
 import { pinToIPFS } from "./utils/pinata.js";
+
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-const MONGO_URI = process.env.MONGODB_URI;
-const PINATA_JWT = process.env.PINATA_JWT;
+const JSON_LIMIT = process.env.JSON_LIMIT || "10mb";
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+const MONGO_URI = process.env.MONGODB_URI || "";
+const PINATA_JWT = process.env.PINATA_JWT || "";
 
 // Middleware
-app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: "10mb" }));
+app.use(
+  cors({
+    origin:
+      CORS_ORIGIN === "*"
+        ? true
+        : [CORS_ORIGIN, "http://localhost:3000", "http://localhost:5173"],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+  })
+);
+app.use(express.json({ limit: JSON_LIMIT }));
+app.use((req, _res, next) => {
+  // make sure no caches for APIs
+  req.headers["cache-control"] = "no-store";
+  next();
+});
 app.use(morgan("dev"));
 
-// ---------- Connect MongoDB ----------
-if (!MONGO_URI) {
-  console.error("❌ MONGODB_URI not found in environment variables");
-  process.exit(1);
+// DB connect
+if (MONGO_URI) {
+  mongoose
+    .connect(MONGO_URI, { dbName: "mediblock" })
+    .then(() => console.log("✅ MongoDB connected"))
+    .catch((e) => console.error("MongoDB connection error:", e.message));
+} else {
+  console.warn("⚠️  MONGODB_URI not set. Records won't persist.");
 }
 
-mongoose
-  .connect(MONGO_URI, { dbName: "mediblock" })
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => {
-    console.error("❌ MongoDB connection failed:", err.message);
-    process.exit(1);
+// Health
+app.get("/healthz", async (_req, res) => {
+  res.json({
+    ok: true,
+    mongo: mongoose.connection.readyState === 1,
+    time: new Date().toISOString(),
+    version: "phase1-1.0.0"
   });
-
-// ---------- Define Record Schema ----------
-const recordSchema = new mongoose.Schema(
-  {
-    name: String,
-    note: String,
-    cid: String,
-    createdAt: { type: Date, default: Date.now },
-  },
-  { versionKey: false }
-);
-
-const Record = mongoose.model("Record", recordSchema);
-
-// ---------- Routes ----------
-
-// Health check
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok", time: new Date().toISOString() });
 });
 
-// Fetch records
+// Records list
 app.get("/records", async (_req, res) => {
-  const data = await Record.find().sort({ createdAt: -1 }).lean();
-  res.json(data);
-});
-
-// Add record manually
-app.post("/records", async (req, res) => {
   try {
-    const { name, note } = req.body;
-    if (!name) return res.status(400).json({ error: "name required" });
-    const record = await Record.create({ name, note });
-    res.status(201).json(record);
+    const list = MONGO_URI
+      ? await Record.find().sort({ createdAt: -1 }).lean()
+      : [];
+    res.json(list);
   } catch (err) {
-    console.error("Record error:", err.message);
-    res.status(500).json({ error: "failed to save record" });
+    console.error("GET /records error:", err);
+    res.status(500).json({ error: "failed_to_fetch_records" });
   }
 });
 
-// Upload and pin file
+// Records create (optional metadata create without file)
+app.post("/records", async (req, res) => {
+  try {
+    const { name, note } = req.body || {};
+    if (!name) return res.status(400).json({ error: "name_required" });
+
+    const rec = MONGO_URI
+      ? await Record.create({ name, note })
+      : { name, note, createdAt: Date.now(), _id: "dev" };
+
+    res.status(201).json(rec);
+  } catch (err) {
+    console.error("POST /records error:", err);
+    res.status(500).json({ error: "failed_to_save_record" });
+  }
+});
+
+// Upload (multipart form, field "file")
 const upload = multer({ storage: multer.memoryStorage() });
 
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "file required" });
+    if (!req.file) return res.status(400).json({ error: "file_required" });
 
-    // Encrypt file
-    const { encryptedData, key, iv } = encryptFile(req.file.buffer);
+    const { originalname, buffer } = req.file;
+    // Encrypt
+    const { encrypted, key, iv, tag } = encryptBuffer(buffer);
+    const encName = `${originalname}.enc`;
 
-    // Upload to IPFS (Pinata)
-    const pinRes = await pinToIPFS(encryptedData, req.file.originalname, PINATA_JWT);
-    const cid = pinRes.IpfsHash;
+    // Combine data for storage: encrypted + tag (so downloaders can verify)
+    // We'll append tag to the end for simple transport; doc later.
+    const payload = Buffer.concat([encrypted, Buffer.from(tag, "hex")]);
 
-    // Save metadata in MongoDB
-    const record = await Record.create({
-      name: req.file.originalname,
-      note: "Encrypted file uploaded to IPFS",
-      cid,
-    });
+    // Pin to IPFS
+    const pin = await pinToIPFS(payload, encName, PINATA_JWT);
+    if (!pin.cid) throw new Error("Pinata did not return a CID");
 
-    res.status(201).json({
-      message: "File uploaded successfully",
-      cid,
-      recordId: record._id,
-      encryptionKey: key,
-      iv,
+    // Save metadata
+    let saved = null;
+    if (MONGO_URI) {
+      saved = await Record.create({
+        name: originalname,
+        note: "Encrypted upload",
+        cid: pin.cid,
+        key,
+        iv
+      });
+    }
+
+    return res.json({
+      ok: true,
+      cid: pin.cid,
+      gateway: `https://gateway.pinata.cloud/ipfs/${pin.cid}`,
+      id: saved?._id || null
+      // (We intentionally DO NOT return key/iv/tag to the client in Phase-1)
     });
   } catch (err) {
-    console.error("Upload error:", err.message);
+    console.error("POST /upload error:", err);
     res.status(500).json({ error: "upload_failed", details: err.message });
   }
 });
 
-// Default + 404
-app.get("/", (_req, res) => res.send("MediBlock backend alive"));
+// Root + 404
+app.get("/", (_req, res) => res.send("MediBlock backend (Phase-1)"));
 app.use((req, res) => res.status(404).json({ error: "Not found", path: req.path }));
 
-// Start server
-app.listen(PORT, () => console.log(`🚀 Backend running on port ${PORT}`));
+// Start
+app.listen(PORT, () => {
+  console.log(`🚀 Backend running on 0.0.0.0:${PORT}`);
+});
