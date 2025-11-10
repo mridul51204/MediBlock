@@ -1,15 +1,18 @@
 {
   "name": "mediblock-backend",
   "version": "1.0.0",
-  "main": "server.js",
   "type": "module",
-  "scripts": {
-    "start": "node server.js"
-  },
+  "main": "src/index.js",
+  "scripts": { "start": "node src/index.js" },
   "dependencies": {
+    "axios": "^1.7.2",
     "cors": "^2.8.5",
+    "crypto-js": "^4.2.0",
     "express": "^4.19.2",
+    "form-data": "^4.0.0",
+    "mongoose": "^8.6.0",
+    "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
-    "morgan": "^1.10.0"
+    "zod": "^3.23.8"
   }
 }
