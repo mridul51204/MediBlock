@@ -1,27 +1,17 @@
-// ✅ Central API setup
-const API_BASE_URL = "https://mediblock-backend.onrender.com"; // your Render link
+const base =
+  import.meta?.env?.VITE_API_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:10000";
 
-export async function uploadFile(file) {
-  const formData = new FormData();
-  formData.append("file", file);
+export const API = (p) => `${base}${p.startsWith("/") ? p : `/${p}`}`;
 
-  const res = await fetch(`${API_BASE_URL}/upload`, {
-    method: "POST",
-    body: formData,
-  });
-  return res.json();
-}
-
-export async function getRecords() {
-  const res = await fetch(`${API_BASE_URL}/records`);
-  return res.json();
-}
-
-export async function addRecord(data) {
-  const res = await fetch(`${API_BASE_URL}/records`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  return res.json();
-}
+// examples:
+export const listRecords = () => fetch(API("/records")).then(r => r.json());
+export const createRecord = (data) =>
+  fetch(API("/records"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })
+    .then(r => r.json());
+export const uploadFile = (file) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  return fetch(API("/upload"), { method: "POST", body: fd }).then(r => r.json());
+};
