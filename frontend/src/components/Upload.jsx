@@ -1,71 +1,116 @@
-import React, { useState, useEffect } from "react";
-import { uploadFile, getRecords } from "../api";
+import React, { useState } from "react";
 
-export default function Upload() {
+const Upload = () => {
   const [file, setFile] = useState(null);
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("");
+  const [cid, setCid] = useState("");
+  const [txHash, setTxHash] = useState("");
 
-  // fetch existing records when component mounts
-  useEffect(() => {
-    getRecords().then(setRecords);
-  }, []);
-
-  async function handleUpload(e) {
+  const handleUpload = async (e) => {
     e.preventDefault();
-    if (!file) return alert("Please select a file first!");
-    setLoading(true);
+    if (!file) {
+      alert("Please select a file first!");
+      return;
+    }
+
+    setStatus("⏳ Uploading file to MediBlock backend...");
 
     try {
-      const res = await uploadFile(file);
-      alert(`✅ Uploaded to IPFS!\nCID: ${res.cid}`);
-      setRecords((prev) => [res, ...prev]);
+      // 1️⃣ Upload encrypted file to IPFS via backend
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const uploadRes = await fetch(
+        "https://mediblock-backend.onrender.com/upload",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok || !uploadData.cid)
+        throw new Error("Upload failed: " + (uploadData.error || "unknown"));
+
+      setCid(uploadData.cid);
+      setStatus("✅ File uploaded! Registering on blockchain...");
+
+      // 2️⃣ Simulate blockchain record
+      const simulateRes = await fetch(
+        "https://mediblock-backend.onrender.com/records/simulate",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: file.name,
+            note: "Blockchain record after upload",
+            cid: uploadData.cid,
+          }),
+        }
+      );
+
+      const simulateData = await simulateRes.json();
+      if (!simulateRes.ok || !simulateData.success)
+        throw new Error("Blockchain record failed");
+
+      setTxHash(simulateData.record.txHash);
+      setStatus("✅ Record stored on blockchain!");
     } catch (err) {
       console.error(err);
-      alert("❌ Upload failed. Check console for details.");
-    } finally {
-      setLoading(false);
+      setStatus("❌ Error: " + err.message);
     }
-  }
+  };
 
   return (
-    <div className="p-6 max-w-xl mx-auto text-center">
-      <h2 className="text-2xl font-bold mb-4 text-blue-700">
-        MediBlock File Upload
-      </h2>
+    <div className="upload-container" style={{ padding: "2rem", textAlign: "center" }}>
+      <h2>📁 Upload Medical Record</h2>
 
       <form onSubmit={handleUpload}>
         <input
           type="file"
+          accept="application/pdf"
           onChange={(e) => setFile(e.target.files[0])}
-          className="mb-4 border p-2 w-full rounded"
+          style={{ marginTop: "1rem" }}
         />
+        <br />
         <button
           type="submit"
-          disabled={loading}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          style={{
+            marginTop: "1rem",
+            padding: "0.6rem 1.2rem",
+            backgroundColor: "#007bff",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            cursor: "pointer",
+          }}
         >
-          {loading ? "Uploading..." : "Upload"}
+          Upload
         </button>
       </form>
 
-      <h3 className="mt-6 text-lg font-semibold">Uploaded Records</h3>
-      <ul className="text-left mt-2">
-        {records.map((r, i) => (
-          <li key={i} className="border-b py-2">
-            <b>{r.name}</b>
-            <br />
-            <a
-              href={`https://gateway.pinata.cloud/ipfs/${r.cid}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-blue-500 underline"
-            >
-              View Encrypted File
-            </a>
-          </li>
-        ))}
-      </ul>
+      {status && <p style={{ marginTop: "1rem" }}>{status}</p>}
+
+      {cid && (
+        <p>
+          🌐 <strong>IPFS CID:</strong>{" "}
+          <a
+            href={`https://gateway.pinata.cloud/ipfs/${cid}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {cid.slice(0, 30)}...
+          </a>
+        </p>
+      )}
+
+      {txHash && (
+        <p>
+          🔗 <strong>Blockchain TxHash:</strong> {txHash.slice(0, 20)}...
+        </p>
+      )}
     </div>
   );
-}
+};
+
+export default Upload;
