@@ -1,119 +1,187 @@
-import React from "react";
-import Navbar from "./components/Navbar";
-import Footer from "./components/Footer";
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  useNavigate,
-  Navigate,
-} from "react-router-dom";
+import express from "express";
+import cors from "cors";
+import multer from "multer";
+import morgan from "morgan";
+import mongoose from "mongoose";
+import dotenv from "dotenv";
 
-// ===== Login & Register Pages =====
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import PatientLogin from "./pages/LoginTypes/PatientLogin";
-import DoctorLogin from "./pages/LoginTypes/DoctorLogin";
-import AdminLogin from "./pages/LoginTypes/AdminLogin";
-import PatientRegister from "./pages/RegisterTypes/PatientRegister";
-import DoctorRegister from "./pages/RegisterTypes/DoctorRegister";
-import AdminRegister from "./pages/RegisterTypes/AdminRegister";
+import Record from "./models/Record.js";
+import User from "./models/User.js";
+import { encryptBuffer } from "./utils/encrypt.js";
+import { pinToIPFS } from "./utils/pinata.js";
 
-// ===== Functional & Dashboard Pages =====
-import Upload from "./components/Upload";
-import History from "./pages/PatientDashboard/History";
+import recordRoutes from "./records/recordRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
+import { protect } from "./middleware/authMiddleware.js";
+import { allowRoles } from "./middleware/roleMiddleware.js";
 
-// ===== Landing Page =====
-function LandingPage() {
-  const navigate = useNavigate();
+dotenv.config();
 
-  return (
-    <main className="flex-grow mt-20">
-      <section className="text-center py-20 bg-gray-50 px-4">
-        <h1 className="text-5xl font-bold text-blue-700 mb-6">
-          Welcome to MediBlock
-        </h1>
-        <p className="text-gray-600 text-lg mb-8 max-w-3xl mx-auto leading-relaxed">
-          Your personal, secure space for all your medical records. Keep your
-          reports safe, organized, and always accessible whenever you need
-          them. Share files instantly with doctors you trust and stay
-          worry-free knowing your health data is protected with top-level
-          security and privacy.{" "}
-          <strong>MediBlock</strong> — because your health records should always
-          be in your hands.
-        </p>
-        <div className="flex justify-center gap-4">
-          <button
-            onClick={() => navigate("/login")}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
-          >
-            Get Started
-          </button>
+const app = express();
+const PORT = process.env.PORT || 10000;
+const JSON_LIMIT = process.env.JSON_LIMIT || "10mb";
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+const MONGO_URI = process.env.MONGODB_URI || "";
+const PINATA_JWT = process.env.PINATA_JWT || "";
 
-          {/* Quick test buttons for Upload & History */}
-          <button
-            onClick={() => navigate("/upload")}
-            className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition"
-          >
-            Upload File
-          </button>
+// ---------- Middleware ----------
+app.use(
+  cors({
+    origin:
+      CORS_ORIGIN === "*"
+        ? true
+        : [CORS_ORIGIN, "http://localhost:3000", "http://localhost:5173"],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+app.use(express.json({ limit: JSON_LIMIT }));
+app.use((req, _res, next) => {
+  req.headers["cache-control"] = "no-store";
+  next();
+});
+app.use(morgan("dev"));
 
-          <button
-            onClick={() => navigate("/history")}
-            className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition"
-          >
-            View History
-          </button>
-        </div>
-      </section>
-    </main>
-  );
+// ---------- Database Connection ----------
+if (MONGO_URI) {
+  mongoose
+    .connect(MONGO_URI, { dbName: "mediblock" })
+    .then(() => console.log("✅ MongoDB connected"))
+    .catch((e) => console.error("MongoDB connection error:", e.message));
+} else {
+  console.warn("⚠️  MONGODB_URI not set. Records won't persist.");
 }
 
-// ===== Protected Route Wrapper =====
-function PrivateRoute({ element }) {
-  const token = localStorage.getItem("token");
-  return token ? element : <Navigate to="/login" replace />;
-}
+// ---------- Routes ----------
+app.use("/records", recordRoutes);
+app.use("/auth", authRoutes);
 
-// ===== Main App Component =====
-function App() {
-  return (
-    <Router>
-      <div className="min-h-screen flex flex-col bg-white">
-        <Navbar />
+// ---------- Health Check ----------
+app.get("/healthz", async (_req, res) => {
+  res.json({
+    ok: true,
+    mongo: mongoose.connection.readyState === 1,
+    time: new Date().toISOString(),
+    version: "phase4-1.0.0",
+  });
+});
 
-        <div className="flex-grow">
-          <Routes>
-            {/* Landing */}
-            <Route path="/" element={<LandingPage />} />
+// ---------- Protected APIs ----------
 
-            {/* Auth Routes */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/login/patient" element={<PatientLogin />} />
-            <Route path="/login/doctor" element={<DoctorLogin />} />
-            <Route path="/login/admin" element={<AdminLogin />} />
-            <Route path="/register/patient" element={<PatientRegister />} />
-            <Route path="/register/doctor" element={<DoctorRegister />} />
-            <Route path="/register/admin" element={<AdminRegister />} />
+// List logged-in user's records
+app.get("/my/records", protect, async (req, res) => {
+  try {
+    const list = await Record.find({ userId: req.user.id })
+      .sort({ createdAt: -1 })
+      .lean();
+    res.json(list);
+  } catch (err) {
+    console.error("GET /my/records error:", err);
+    res.status(500).json({ error: "failed_to_fetch_records" });
+  }
+});
 
-            {/* Protected Functional Pages */}
-            <Route
-              path="/upload"
-              element={<PrivateRoute element={<Upload />} />}
-            />
-            <Route
-              path="/history"
-              element={<PrivateRoute element={<History />} />}
-            />
-          </Routes>
-        </div>
+// Upload (multipart form, field 'file')
+const upload = multer({ storage: multer.memoryStorage() });
 
-        <Footer />
-      </div>
-    </Router>
-  );
-}
+app.post("/upload", protect, upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "file_required" });
 
-export default App;
+    const { originalname, buffer } = req.file;
+
+    // Encrypt the uploaded file
+    const { encrypted, key, iv, tag } = encryptBuffer(buffer);
+    const encName = `${originalname}.enc`;
+
+    // Combine encrypted data and tag
+    const payload = Buffer.concat([encrypted, Buffer.from(tag, "hex")]);
+
+    // Upload to Pinata (IPFS)
+    const pin = await pinToIPFS(payload, encName, PINATA_JWT);
+    if (!pin.cid) throw new Error("Pinata did not return a CID");
+
+    // Save metadata to MongoDB
+    const saved = await Record.create({
+      userId: req.user.id,
+      name: originalname,
+      note: "Encrypted upload",
+      cid: pin.cid,
+      key,
+      iv,
+    });
+
+    return res.json({
+      ok: true,
+      cid: pin.cid,
+      gateway: `https://gateway.pinata.cloud/ipfs/${pin.cid}`,
+      id: saved._id,
+    });
+  } catch (err) {
+    console.error("POST /upload error:", err);
+    res.status(500).json({ error: "upload_failed", details: err.message });
+  }
+});
+
+// Simulated blockchain record
+app.post("/records/simulate", protect, async (req, res) => {
+  try {
+    const { name, note, cid } = req.body || {};
+    if (!name || !cid) return res.status(400).json({ error: "name_and_cid_required" });
+
+    const fakeTx = "0x" + Math.random().toString(16).slice(2).padEnd(64, "0");
+
+    const rec = await Record.create({
+      userId: req.user.id,
+      name,
+      note: note || "Simulated blockchain upload",
+      cid,
+      txHash: fakeTx,
+    });
+
+    res.json({
+      success: true,
+      message: "Simulated blockchain record created",
+      record: rec,
+    });
+  } catch (err) {
+    console.error("POST /records/simulate error:", err);
+    res.status(500).json({ error: "simulate_failed" });
+  }
+});
+
+// ---------- Doctor & Admin APIs ----------
+
+// Admin: list all users
+app.get("/admin/users", protect, allowRoles("admin"), async (_req, res) => {
+  try {
+    const users = await User.find().select("-password").lean();
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: "failed_to_fetch_users" });
+  }
+});
+
+// Doctor: list all patient records (later filter by share)
+app.get("/doctor/records", protect, allowRoles("doctor", "admin"), async (_req, res) => {
+  try {
+    const list = await Record.find().populate("userId", "name email role").lean();
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ error: "failed_to_fetch_records" });
+  }
+});
+
+// ---------- Root + 404 ----------
+app.get("/", (_req, res) =>
+  res.send("🚀 MediBlock Backend (Phase-4: Role-Based Dashboards)")
+);
+app.use((req, res) =>
+  res.status(404).json({ error: "Not found", path: req.path })
+);
+
+// ---------- Start Server ----------
+app.listen(PORT, () => {
+  console.log(`🚀 Backend running on 0.0.0.0:${PORT}`);
+});
