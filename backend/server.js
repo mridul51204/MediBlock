@@ -6,7 +6,8 @@ import multer from "multer";
 import morgan from "morgan";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
-import recordRoutes from "./routes/recordRoutes.js";
+import recordRoutes from "./records/recordRoutes.js";
+
 
 import Record from "./models/Record.js";
 import { encryptBuffer } from "./utils/encrypt.js";
