@@ -7,6 +7,8 @@ import morgan from "morgan";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import recordRoutes from "./records/recordRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
+
 
 
 import Record from "./models/Record.js";
@@ -63,6 +65,8 @@ app.get("/healthz", async (_req, res) => {
 
 // ---------- Register Routes ----------
 app.use("/records", recordRoutes);
+app.use("/auth", authRoutes);
+
 
 // ---------- Records Create (metadata-only) ----------
 app.post("/records", async (req, res) => {
