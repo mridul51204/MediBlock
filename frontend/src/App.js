@@ -1,7 +1,13 @@
 import React from "react";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
-import { BrowserRouter as Router, Routes, Route, useNavigate } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  useNavigate,
+  Navigate,
+} from "react-router-dom";
 
 // ===== Login & Register Pages =====
 import Login from "./pages/Login";
@@ -28,12 +34,13 @@ function LandingPage() {
           Welcome to MediBlock
         </h1>
         <p className="text-gray-600 text-lg mb-8 max-w-3xl mx-auto leading-relaxed">
-          Your personal, secure space for all your medical records. Keep your reports
-          safe, organized, and always accessible whenever you need them. Share files
-          instantly with doctors you trust and stay worry-free knowing your health
-          data is protected with top-level security and privacy.{" "}
-          <strong>MediBlock</strong> — because your health records should always be
-          in your hands.
+          Your personal, secure space for all your medical records. Keep your
+          reports safe, organized, and always accessible whenever you need
+          them. Share files instantly with doctors you trust and stay
+          worry-free knowing your health data is protected with top-level
+          security and privacy.{" "}
+          <strong>MediBlock</strong> — because your health records should always
+          be in your hands.
         </p>
         <div className="flex justify-center gap-4">
           <button
@@ -63,6 +70,12 @@ function LandingPage() {
   );
 }
 
+// ===== Protected Route Wrapper =====
+function PrivateRoute({ element }) {
+  const token = localStorage.getItem("token");
+  return token ? element : <Navigate to="/login" replace />;
+}
+
 // ===== Main App Component =====
 function App() {
   return (
@@ -85,9 +98,15 @@ function App() {
             <Route path="/register/doctor" element={<DoctorRegister />} />
             <Route path="/register/admin" element={<AdminRegister />} />
 
-            {/* Functional Pages (Phase 2) */}
-            <Route path="/upload" element={<Upload />} />
-            <Route path="/history" element={<History />} />
+            {/* Protected Functional Pages */}
+            <Route
+              path="/upload"
+              element={<PrivateRoute element={<Upload />} />}
+            />
+            <Route
+              path="/history"
+              element={<PrivateRoute element={<History />} />}
+            />
           </Routes>
         </div>
 
