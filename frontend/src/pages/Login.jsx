@@ -1,66 +1,49 @@
-import React from "react";
+import React, { useState } from "react";
+import { loginUser } from "../components/app";
 import { useNavigate } from "react-router-dom";
 
 const Login = () => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const navigate = useNavigate();
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await loginUser(email, password);
+      navigate("/upload");
+    } catch (err) {
+      setError("Invalid credentials");
+    }
+  };
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-100 to-blue-300">
-      <h1 className="text-4xl font-extrabold text-blue-800 mb-8 text-center">
-        Login as
-      </h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        {/* Patient Login */}
-        <div
-          onClick={() => navigate("/login/patient")}
-          className="bg-white shadow-lg rounded-2xl p-8 hover:scale-105 hover:shadow-2xl transition cursor-pointer text-center border-t-4 border-blue-600"
+    <div className="flex flex-col items-center mt-24">
+      <h2 className="text-3xl font-bold text-blue-700 mb-4">Login</h2>
+      <form onSubmit={handleSubmit} className="w-80 bg-white shadow-md rounded p-6">
+        <input
+          type="email"
+          placeholder="Email"
+          className="border p-2 w-full mb-3"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <input
+          type="password"
+          placeholder="Password"
+          className="border p-2 w-full mb-4"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <button
+          type="submit"
+          className="bg-blue-600 text-white py-2 px-4 rounded w-full hover:bg-blue-700"
         >
-          <img
-            src="https://cdn-icons-png.flaticon.com/512/4320/4320337.png"
-            alt="Patient"
-            className="w-20 h-20 mx-auto mb-4"
-          />
-          <h2 className="text-xl font-semibold text-blue-700 mb-2">Patient</h2>
-        </div>
-
-        {/* Doctor Login */}
-        <div
-          onClick={() => navigate("/login/doctor")}
-          className="bg-white shadow-lg rounded-2xl p-8 hover:scale-105 hover:shadow-2xl transition cursor-pointer text-center border-t-4 border-green-600"
-        >
-          <img
-            src="https://cdn-icons-png.flaticon.com/512/3774/3774299.png"
-            alt="Doctor"
-            className="w-20 h-20 mx-auto mb-4"
-          />
-          <h2 className="text-xl font-semibold text-green-700 mb-2">Doctor</h2>
-        </div>
-
-        {/* Admin Login */}
-        <div
-          onClick={() => navigate("/login/admin")}
-          className="bg-white shadow-lg rounded-2xl p-8 hover:scale-105 hover:shadow-2xl transition cursor-pointer text-center border-t-4 border-purple-600"
-        >
-          <img
-            src="https://cdn-icons-png.flaticon.com/512/7542/7542574.png"
-            alt="Admin"
-            className="w-20 h-20 mx-auto mb-4"
-          />
-          <h2 className="text-xl font-semibold text-purple-700 mb-2">Admin</h2>
-        </div>
-      </div>
-
-      {/* Register Now link */}
-      <p className="text-gray-700 text-center text-lg">
-        Don’t have an account?{" "}
-        <span
-          onClick={() => navigate("/register")}
-          className="text-blue-700 font-semibold hover:underline cursor-pointer"
-        >
-          Register Now
-        </span>
-      </p>
+          Sign In
+        </button>
+        {error && <p className="text-red-600 mt-2">{error}</p>}
+      </form>
     </div>
   );
 };
