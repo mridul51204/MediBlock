@@ -1,14 +1,16 @@
-// backend/models/Record.js
 import mongoose from "mongoose";
 
-const RecordSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  note: { type: String },
-  cid: { type: String },
-  key: { type: String },
-  iv: { type: String },
-  txHash: { type: String },            // simulated or real blockchain tx
-  createdAt: { type: Date, default: Date.now },
-});
+const recordSchema = new mongoose.Schema(
+  {
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true }, // NEW
+    name: { type: String, required: true },
+    note: { type: String },
+    cid: { type: String },
+    key: { type: String },
+    iv: { type: String },
+    txHash: { type: String }, // for real/simulated blockchain
+  },
+  { timestamps: true }
+);
 
-export default mongoose.model("Record", RecordSchema);
+export default mongoose.model("Record", recordSchema);
