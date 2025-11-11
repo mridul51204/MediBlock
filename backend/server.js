@@ -1,9 +1,12 @@
+// backend/server.js
+
 import express from "express";
 import cors from "cors";
 import multer from "multer";
 import morgan from "morgan";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import recordRoutes from "./routes/recordRoutes.js";
 
 import Record from "./models/Record.js";
 import { encryptBuffer } from "./utils/encrypt.js";
@@ -18,7 +21,7 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 const MONGO_URI = process.env.MONGODB_URI || "";
 const PINATA_JWT = process.env.PINATA_JWT || "";
 
-// Middleware
+// ---------- Middleware ----------
 app.use(
   cors({
     origin:
@@ -27,18 +30,17 @@ app.use(
         : [CORS_ORIGIN, "http://localhost:3000", "http://localhost:5173"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 app.use(express.json({ limit: JSON_LIMIT }));
 app.use((req, _res, next) => {
-  // make sure no caches for APIs
   req.headers["cache-control"] = "no-store";
   next();
 });
 app.use(morgan("dev"));
 
-// DB connect
+// ---------- Database Connection ----------
 if (MONGO_URI) {
   mongoose
     .connect(MONGO_URI, { dbName: "mediblock" })
@@ -48,30 +50,20 @@ if (MONGO_URI) {
   console.warn("⚠️  MONGODB_URI not set. Records won't persist.");
 }
 
-// Health
+// ---------- Health Check ----------
 app.get("/healthz", async (_req, res) => {
   res.json({
     ok: true,
     mongo: mongoose.connection.readyState === 1,
     time: new Date().toISOString(),
-    version: "phase1-1.0.0"
+    version: "phase2B-1.0.0",
   });
 });
 
-// Records list
-app.get("/records", async (_req, res) => {
-  try {
-    const list = MONGO_URI
-      ? await Record.find().sort({ createdAt: -1 }).lean()
-      : [];
-    res.json(list);
-  } catch (err) {
-    console.error("GET /records error:", err);
-    res.status(500).json({ error: "failed_to_fetch_records" });
-  }
-});
+// ---------- Register Routes ----------
+app.use("/records", recordRoutes);
 
-// Records create (optional metadata create without file)
+// ---------- Records Create (metadata-only) ----------
 app.post("/records", async (req, res) => {
   try {
     const { name, note } = req.body || {};
@@ -88,7 +80,7 @@ app.post("/records", async (req, res) => {
   }
 });
 
-// Upload (multipart form, field "file")
+// ---------- Upload (multipart form, field 'file') ----------
 const upload = multer({ storage: multer.memoryStorage() });
 
 app.post("/upload", upload.single("file"), async (req, res) => {
@@ -96,19 +88,19 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "file_required" });
 
     const { originalname, buffer } = req.file;
-    // Encrypt
+
+    // Encrypt the uploaded file
     const { encrypted, key, iv, tag } = encryptBuffer(buffer);
     const encName = `${originalname}.enc`;
 
-    // Combine data for storage: encrypted + tag (so downloaders can verify)
-    // We'll append tag to the end for simple transport; doc later.
+    // Combine encrypted data and tag
     const payload = Buffer.concat([encrypted, Buffer.from(tag, "hex")]);
 
-    // Pin to IPFS
+    // Upload to Pinata (IPFS)
     const pin = await pinToIPFS(payload, encName, PINATA_JWT);
     if (!pin.cid) throw new Error("Pinata did not return a CID");
 
-    // Save metadata
+    // Save metadata to MongoDB
     let saved = null;
     if (MONGO_URI) {
       saved = await Record.create({
@@ -116,7 +108,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
         note: "Encrypted upload",
         cid: pin.cid,
         key,
-        iv
+        iv,
       });
     }
 
@@ -124,8 +116,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       ok: true,
       cid: pin.cid,
       gateway: `https://gateway.pinata.cloud/ipfs/${pin.cid}`,
-      id: saved?._id || null
-      // (We intentionally DO NOT return key/iv/tag to the client in Phase-1)
+      id: saved?._id || null,
     });
   } catch (err) {
     console.error("POST /upload error:", err);
@@ -133,11 +124,13 @@ app.post("/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-// Root + 404
-app.get("/", (_req, res) => res.send("MediBlock backend (Phase-1)"));
-app.use((req, res) => res.status(404).json({ error: "Not found", path: req.path }));
+// ---------- Root + 404 ----------
+app.get("/", (_req, res) => res.send("🚀 MediBlock Backend (Phase-2B Simulated Blockchain)"));
+app.use((req, res) =>
+  res.status(404).json({ error: "Not found", path: req.path })
+);
 
-// Start
+// ---------- Start Server ----------
 app.listen(PORT, () => {
   console.log(`🚀 Backend running on 0.0.0.0:${PORT}`);
 });
