@@ -1,18 +1,16 @@
-// backend/routes/recordRoutes.js
-const express = require("express");
-const router = express.Router();
-const crypto = require("crypto");
-const Record = require("../models/Record");
+// backend/records/recordRoutes.js
+import express from "express";
+import crypto from "crypto";
+import Record from "../models/Record.js";
 
-// ✅ Simulate blockchain transaction logging
+const router = express.Router();
+
+// Simulate blockchain transaction
 router.post("/simulate", async (req, res) => {
   try {
     const { name, note, cid } = req.body;
-    if (!name || !cid) {
-      return res.status(400).json({ error: "Missing name or CID" });
-    }
+    if (!name || !cid) return res.status(400).json({ error: "Missing name or CID" });
 
-    // Generate fake blockchain transaction hash
     const fakeTxHash = "0x" + crypto.randomBytes(32).toString("hex");
     const timestamp = new Date().toISOString();
 
@@ -26,17 +24,17 @@ router.post("/simulate", async (req, res) => {
 
     res.json({
       success: true,
-      message: "Simulated blockchain record created successfully",
+      message: "Simulated blockchain record created",
       record: newRecord,
     });
   } catch (err) {
-    console.error("Simulate error:", err);
+    console.error("Simulate error:", err.message);
     res.status(500).json({ error: "failed_to_save_record" });
   }
 });
 
-// ✅ Get all stored records
-router.get("/", async (req, res) => {
+// Get all stored records
+router.get("/", async (_req, res) => {
   try {
     const records = await Record.find().sort({ createdAt: -1 });
     res.json(records);
@@ -45,4 +43,4 @@ router.get("/", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
